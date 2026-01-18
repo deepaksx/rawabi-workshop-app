@@ -108,7 +108,8 @@ router.post('/:answerId/audio', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
-    const relativePath = path.join('uploads', 'audio', req.file.filename);
+    // Use forward slashes for URL compatibility
+    const relativePath = `uploads/audio/${req.file.filename}`;
 
     const result = await db.query(`
       INSERT INTO audio_recordings (answer_id, file_path, file_name, mime_type, file_size, duration_seconds)
@@ -133,7 +134,8 @@ router.post('/:answerId/document', upload.single('document'), async (req, res) =
       return res.status(400).json({ error: 'No document provided' });
     }
 
-    const relativePath = path.join('uploads', 'documents', req.file.filename);
+    // Use forward slashes for URL compatibility
+    const relativePath = `uploads/documents/${req.file.filename}`;
 
     const result = await db.query(`
       INSERT INTO documents (answer_id, file_path, file_name, original_name, mime_type, file_size, description)
