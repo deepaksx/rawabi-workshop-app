@@ -41,4 +41,14 @@ export const uploadDocument = (answerId, formData) =>
 export const deleteAudio = (audioId) => api.delete(`/answers/audio/${audioId}`);
 export const deleteDocument = (docId) => api.delete(`/answers/document/${docId}`);
 
+// Participants
+export const getParticipants = (sessionId) => api.get(`/participants/session/${sessionId}`);
+export const addParticipant = (sessionId, data) => api.post(`/participants/session/${sessionId}`, data);
+export const addParticipantsBulk = (sessionId, participants) =>
+  api.post(`/participants/session/${sessionId}/bulk`, { participants });
+export const updateParticipant = (id, data) => api.patch(`/participants/${id}`, data);
+export const deleteParticipant = (id) => api.delete(`/participants/${id}`);
+export const toggleParticipantPresence = (id, is_present) =>
+  api.patch(`/participants/${id}/presence`, { is_present });
+
 export default api;

@@ -5,6 +5,7 @@ const path = require('path');
 const sessionsRouter = require('./routes/sessions');
 const questionsRouter = require('./routes/questions');
 const answersRouter = require('./routes/answers');
+const participantsRouter = require('./routes/participants');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,6 +24,7 @@ if (process.env.NODE_ENV === 'production') {
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/questions', questionsRouter);
 app.use('/api/answers', answersRouter);
+app.use('/api/participants', participantsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

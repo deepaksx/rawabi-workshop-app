@@ -6,7 +6,8 @@ import {
   uploadAudio,
   uploadDocument,
   deleteAudio,
-  deleteDocument
+  deleteDocument,
+  getParticipants
 } from '../services/api';
 import {
   ChevronLeft,
@@ -26,7 +27,9 @@ import {
   File,
   Download,
   Clock,
-  User
+  User,
+  Users,
+  ChevronDown
 } from 'lucide-react';
 
 const entityColors = {
@@ -39,6 +42,7 @@ function QuestionView() {
   const { sessionId, questionId } = useParams();
   const navigate = useNavigate();
   const [question, setQuestion] = useState(null);
+  const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -48,6 +52,7 @@ function QuestionView() {
   const [respondentRole, setRespondentRole] = useState('');
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState('pending');
+  const [selectedParticipantId, setSelectedParticipantId] = useState('');
 
   // Audio recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -67,30 +72,58 @@ function QuestionView() {
   const [uploadingFile, setUploadingFile] = useState(false);
 
   useEffect(() => {
-    loadQuestion();
+    loadData();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, [questionId]);
 
-  const loadQuestion = async () => {
+  const loadData = async () => {
     try {
-      const response = await getQuestion(questionId);
-      setQuestion(response.data);
+      const [questionRes, participantsRes] = await Promise.all([
+        getQuestion(questionId),
+        getParticipants(sessionId)
+      ]);
+
+      setQuestion(questionRes.data);
+      setParticipants(participantsRes.data);
 
       // Populate form with existing answer
-      if (response.data.answer) {
-        setTextResponse(response.data.answer.text_response || '');
-        setRespondentName(response.data.answer.respondent_name || '');
-        setRespondentRole(response.data.answer.respondent_role || '');
-        setNotes(response.data.answer.notes || '');
-        setStatus(response.data.answer.status || 'pending');
+      if (questionRes.data.answer) {
+        setTextResponse(questionRes.data.answer.text_response || '');
+        setRespondentName(questionRes.data.answer.respondent_name || '');
+        setRespondentRole(questionRes.data.answer.respondent_role || '');
+        setNotes(questionRes.data.answer.notes || '');
+        setStatus(questionRes.data.answer.status || 'pending');
+
+        // Try to match existing respondent with participants
+        const matchedParticipant = participantsRes.data.find(
+          p => p.name === questionRes.data.answer.respondent_name
+        );
+        if (matchedParticipant) {
+          setSelectedParticipantId(matchedParticipant.id.toString());
+        }
       }
     } catch (error) {
-      console.error('Failed to load question:', error);
+      console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleParticipantChange = (participantId) => {
+    setSelectedParticipantId(participantId);
+    if (participantId) {
+      const participant = participants.find(p => p.id.toString() === participantId);
+      if (participant) {
+        setRespondentName(participant.name);
+        setRespondentRole(participant.role || '');
+      }
+    } else {
+      // Clear if "Other" or empty selected
+      setRespondentName('');
+      setRespondentRole('');
     }
   };
 
@@ -119,7 +152,7 @@ function QuestionView() {
       }
 
       // Reload question to get updated data
-      await loadQuestion();
+      await loadData();
     } catch (error) {
       console.error('Failed to save answer:', error);
       alert('Failed to save answer. Please try again.');
@@ -203,7 +236,7 @@ function QuestionView() {
     if (!confirm('Are you sure you want to delete this recording?')) return;
     try {
       await deleteAudio(audioId);
-      await loadQuestion();
+      await loadData();
     } catch (error) {
       console.error('Failed to delete audio:', error);
     }
@@ -227,7 +260,7 @@ function QuestionView() {
       const answerId = question.answer?.id;
       if (answerId) {
         await uploadDocument(answerId, formData);
-        await loadQuestion();
+        await loadData();
       }
     } catch (error) {
       console.error('Failed to upload document:', error);
@@ -242,7 +275,7 @@ function QuestionView() {
     if (!confirm('Are you sure you want to delete this document?')) return;
     try {
       await deleteDocument(docId);
-      await loadQuestion();
+      await loadData();
     } catch (error) {
       console.error('Failed to delete document:', error);
     }
@@ -352,33 +385,103 @@ function QuestionView() {
           Response
         </h3>
 
-        {/* Respondent Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <User className="w-4 h-4 inline mr-1" />
-              Respondent Name
-            </label>
-            <input
-              type="text"
-              value={respondentName}
-              onChange={(e) => setRespondentName(e.target.value)}
-              placeholder="Enter name..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rawabi-500 focus:border-rawabi-500"
-            />
+        {/* Respondent Selection */}
+        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+          <div className="flex items-center space-x-2 mb-3">
+            <Users className="w-4 h-4 text-rawabi-600" />
+            <label className="text-sm font-medium text-gray-700">Select Respondent</label>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role / Position
-            </label>
-            <input
-              type="text"
-              value={respondentRole}
-              onChange={(e) => setRespondentRole(e.target.value)}
-              placeholder="e.g., Finance Manager"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rawabi-500 focus:border-rawabi-500"
-            />
-          </div>
+
+          {participants.length > 0 ? (
+            <div className="space-y-3">
+              <div className="relative">
+                <select
+                  value={selectedParticipantId}
+                  onChange={(e) => handleParticipantChange(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rawabi-500 focus:border-rawabi-500 appearance-none bg-white"
+                >
+                  <option value="">-- Select a participant --</option>
+                  {participants.map((p) => (
+                    <option key={p.id} value={p.id.toString()}>
+                      {p.name} {p.role ? `(${p.role})` : ''}
+                    </option>
+                  ))}
+                  <option value="other">Other (enter manually)</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              </div>
+
+              {selectedParticipantId === 'other' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-gray-200">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={respondentName}
+                      onChange={(e) => setRespondentName(e.target.value)}
+                      placeholder="Enter name..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rawabi-500 focus:border-rawabi-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Role</label>
+                    <input
+                      type="text"
+                      value={respondentRole}
+                      onChange={(e) => setRespondentRole(e.target.value)}
+                      placeholder="e.g., Finance Manager"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rawabi-500 focus:border-rawabi-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedParticipantId && selectedParticipantId !== 'other' && (
+                <div className="flex items-center space-x-4 text-sm text-gray-600 bg-white p-3 rounded-lg">
+                  <div className="w-10 h-10 bg-rawabi-100 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-rawabi-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{respondentName}</p>
+                    {respondentRole && <p className="text-gray-500">{respondentRole}</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  <User className="w-3 h-3 inline mr-1" />
+                  Respondent Name
+                </label>
+                <input
+                  type="text"
+                  value={respondentName}
+                  onChange={(e) => setRespondentName(e.target.value)}
+                  placeholder="Enter name..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rawabi-500 focus:border-rawabi-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Role / Position
+                </label>
+                <input
+                  type="text"
+                  value={respondentRole}
+                  onChange={(e) => setRespondentRole(e.target.value)}
+                  placeholder="e.g., Finance Manager"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rawabi-500 focus:border-rawabi-500"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                  No participants registered for this session. Go back to session view to add participants.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Text Response */}

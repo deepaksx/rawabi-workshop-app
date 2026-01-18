@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getSession, getQuestions, getSessionProgress, updateSessionStatus } from '../services/api';
+import { getSession, getQuestions, getSessionProgress, updateSessionStatus, getParticipants } from '../services/api';
+import ParticipantsModal from '../components/ParticipantsModal';
 import {
   ChevronLeft,
   CheckCircle,
@@ -12,7 +13,9 @@ import {
   Clock,
   FileText,
   Mic,
-  Paperclip
+  Paperclip,
+  Users,
+  UserPlus
 } from 'lucide-react';
 
 const entityColors = {
@@ -27,10 +30,12 @@ function SessionView() {
   const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [progress, setProgress] = useState([]);
+  const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -38,12 +43,14 @@ function SessionView() {
 
   const loadData = async () => {
     try {
-      const [sessionRes, progressRes] = await Promise.all([
+      const [sessionRes, progressRes, participantsRes] = await Promise.all([
         getSession(sessionId),
-        getSessionProgress(sessionId)
+        getSessionProgress(sessionId),
+        getParticipants(sessionId)
       ]);
       setSession(sessionRes.data);
       setProgress(progressRes.data);
+      setParticipants(participantsRes.data);
 
       // Load all questions for the session
       const questionsRes = await getQuestions({ session_id: sessionId, limit: 300 });
@@ -52,6 +59,11 @@ function SessionView() {
       // Auto-select first entity
       if (progressRes.data.length > 0 && !selectedEntity) {
         setSelectedEntity(progressRes.data[0].entity_id);
+      }
+
+      // Show participants modal if session not started and no participants
+      if (sessionRes.data.status === 'not_started' && participantsRes.data.length === 0) {
+        setShowParticipantsModal(true);
       }
     } catch (error) {
       console.error('Failed to load session:', error);
@@ -67,6 +79,13 @@ function SessionView() {
     } catch (error) {
       console.error('Failed to update status:', error);
     }
+  };
+
+  const handleStartSession = async (updatedParticipants) => {
+    setParticipants(updatedParticipants);
+    setShowParticipantsModal(false);
+    // Update session status to in_progress
+    await handleStatusChange('in_progress');
   };
 
   const filteredQuestions = questions.filter((q) => {
@@ -107,6 +126,16 @@ function SessionView() {
 
   return (
     <div className="space-y-6">
+      {/* Participants Modal */}
+      {showParticipantsModal && (
+        <ParticipantsModal
+          sessionId={sessionId}
+          sessionName={session.name}
+          onClose={() => setShowParticipantsModal(false)}
+          onStartSession={handleStartSession}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
@@ -122,7 +151,21 @@ function SessionView() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
+          {/* Participants Button */}
+          <button
+            onClick={() => setShowParticipantsModal(true)}
+            className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+          >
+            <Users className="w-4 h-4 mr-2 text-gray-600" />
+            <span className="text-gray-700">Participants</span>
+            {participants.length > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-rawabi-100 text-rawabi-700 rounded-full text-xs font-medium">
+                {participants.length}
+              </span>
+            )}
+          </button>
+
           <select
             value={session.status}
             onChange={(e) => handleStatusChange(e.target.value)}
@@ -134,6 +177,57 @@ function SessionView() {
           </select>
         </div>
       </div>
+
+      {/* Participants Banner (if no participants) */}
+      {participants.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <UserPlus className="w-5 h-5 text-amber-600" />
+            <div>
+              <p className="font-medium text-amber-800">No participants added</p>
+              <p className="text-sm text-amber-600">Add participants to track who is responding to questions</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowParticipantsModal(true)}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm"
+          >
+            Add Participants
+          </button>
+        </div>
+      )}
+
+      {/* Participants Summary (if has participants) */}
+      {participants.length > 0 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Users className="w-5 h-5 text-rawabi-600" />
+              <span className="text-sm font-medium text-gray-700">Session Participants:</span>
+              <div className="flex items-center space-x-2">
+                {participants.slice(0, 5).map((p) => (
+                  <span
+                    key={p.id}
+                    className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-700"
+                    title={p.role}
+                  >
+                    {p.name}
+                  </span>
+                ))}
+                {participants.length > 5 && (
+                  <span className="text-sm text-gray-500">+{participants.length - 5} more</span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setShowParticipantsModal(true)}
+              className="text-sm text-rawabi-600 hover:underline"
+            >
+              Manage
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Entity Progress Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
